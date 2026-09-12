@@ -1,0 +1,39 @@
+services:
+  app:
+    environment:
+      APP_ENV: staging
+      APP_DEBUG: "false"
+      APP_URL: ${STAGING_APP_URL:?set STAGING_APP_URL}
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_DATABASE: ${DB_DATABASE:?set DB_DATABASE}
+      DB_USERNAME: ${DB_USERNAME:?set DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD}
+      MAIL_HOST: mailpit
+      MAIL_PORT: 1025
+    ports:
+      - "${APP_PORT:-8080}:80"
+
+  db:
+    environment:
+      MARIADB_DATABASE: ${DB_DATABASE:?set DB_DATABASE}
+      MARIADB_USER: ${DB_USERNAME:?set DB_USERNAME}
+      MARIADB_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD}
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?set DB_ROOT_PASSWORD}
+
+  phpmyadmin:
+    image: phpmyadmin:5.2.2
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PMA_HOST: db
+      PMA_PORT: 3306
+      PMA_ABSOLUTE_URI: ${STAGING_DB_UI_URL:?set STAGING_DB_UI_URL}
+    ports:
+      - "${PHPMYADMIN_PORT:-8081}:80"
+
+  mailpit:
+    image: axllent/mailpit:v1.27
+    ports:
+      - "${MAILPIT_UI_PORT:-8025}:8025"

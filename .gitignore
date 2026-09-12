@@ -1,0 +1,5 @@
+# Local staging secrets
+.env.staging
+
+# Common noise
+.DS_Store
