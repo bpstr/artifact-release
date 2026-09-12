@@ -1,0 +1,62 @@
+name: staging
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+  workflow_dispatch:
+
+concurrency:
+  group: staging-${{ github.event.pull_request.number || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  staging:
+    if: github.event.action != 'closed'
+    runs-on: self-hosted
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create staging env
+        shell: bash
+        env:
+          DB_PASSWORD: ${{ secrets.STAGING_DB_PASSWORD }}
+          DB_ROOT_PASSWORD: ${{ secrets.STAGING_DB_ROOT_PASSWORD }}
+        run: |
+          project="ar-${GITHUB_REPOSITORY_ID}-pr${{ github.event.pull_request.number || github.run_number }}"
+          echo "ARTIFACT_RELEASE_PROJECT=$project" >> "$GITHUB_ENV"
+
+          cat > .env.staging <<EOF
+          STAGING_APP_URL=https://${project}.staging.example.com
+          STAGING_DB_UI_URL=https://${project}-db.staging.example.com
+          APP_PORT=8080
+          PHPMYADMIN_PORT=8081
+          MAILPIT_UI_PORT=8025
+          DB_DATABASE=app
+          DB_USERNAME=app
+          DB_PASSWORD=${DB_PASSWORD}
+          DB_ROOT_PASSWORD=${DB_ROOT_PASSWORD}
+          EOF
+
+      - name: Validate staging definition
+        run: ./artifact-release validate
+
+      - name: Deploy staging
+        run: ./artifact-release up
+
+      - name: Show services
+        run: ./artifact-release status
+
+  cleanup:
+    if: github.event.action == 'closed'
+    runs-on: self-hosted
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Remove preview
+        env:
+          ARTIFACT_RELEASE_PROJECT: ar-${{ github.repository_id }}-pr${{ github.event.pull_request.number }}
+        run: |
+          cp .env.staging.example .env.staging
+          ./artifact-release destroy

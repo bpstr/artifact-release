@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+command_name="${1:-help}"
+shift || true
+
+BASE_COMPOSE="${ARTIFACT_RELEASE_BASE_COMPOSE:-compose.yaml}"
+STAGING_COMPOSE="${ARTIFACT_RELEASE_STAGING_COMPOSE:-compose.staging.yaml}"
+ENV_FILE="${ARTIFACT_RELEASE_ENV_FILE:-.env.staging}"
+PROJECT_NAME="${ARTIFACT_RELEASE_PROJECT:-}"
+
+usage() {
+  cat <<'EOF'
+artifact-release <command>
+
+Commands:
+  validate   Validate the merged staging Compose configuration
+  up         Start or update the staging environment
+  down       Stop the staging environment
+  destroy    Stop the staging environment and delete its volumes
+  status     Show staging services
+  config     Print the merged Compose configuration
+
+Environment:
+  ARTIFACT_RELEASE_PROJECT          Required stable environment name
+  ARTIFACT_RELEASE_BASE_COMPOSE     Base Compose file (default: compose.yaml)
+  ARTIFACT_RELEASE_STAGING_COMPOSE  Staging overlay (default: compose.staging.yaml)
+  ARTIFACT_RELEASE_ENV_FILE         Staging env file (default: .env.staging)
+EOF
+}
+
+require_file() {
+  [[ -f "$1" ]] || { echo "artifact-release: missing $1" >&2; exit 2; }
+}
+
+compose() {
+  docker compose \
+    --project-name "$PROJECT_NAME" \
+    --env-file "$ENV_FILE" \
+    -f "$BASE_COMPOSE" \
+    -f "$STAGING_COMPOSE" \
+    "$@"
+}
+
+case "$command_name" in
+  help|-h|--help)
+    usage
+    ;;
+  validate|up|down|destroy|status|config)
+    command -v docker >/dev/null 2>&1 || { echo "artifact-release: docker is required" >&2; exit 2; }
+    [[ -n "$PROJECT_NAME" ]] || { echo "artifact-release: ARTIFACT_RELEASE_PROJECT is required" >&2; exit 2; }
+    require_file "$BASE_COMPOSE"
+    require_file "$STAGING_COMPOSE"
+    require_file "$ENV_FILE"
+
+    case "$command_name" in
+      validate) compose config --quiet ;;
+      up)
+        compose config --quiet
+        compose pull --ignore-buildable
+        compose up -d --remove-orphans --wait
+        ;;
+      down) compose down --remove-orphans ;;
+      destroy) compose down --remove-orphans --volumes ;;
+      status) compose ps ;;
+      config) compose config ;;
+    esac
+    ;;
+  *)
+    echo "artifact-release: unknown command: $command_name" >&2
+    usage >&2
+    exit 2
+    ;;
+esac
